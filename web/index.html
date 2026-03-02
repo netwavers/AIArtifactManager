@@ -46,6 +46,11 @@
 
         <main class="main-content">
             <header class="content-header">
+                <div class="header-actions">
+                    <div id="filter-controls" class="hidden">
+                        <button id="play-all-btn" class="secondary-btn" onclick="playAllAudio()">Play All 🎵</button>
+                    </div>
+                </div>
                 <div class="search-bar">
                     <input type="text" id="search-input" placeholder="Search prompts or tags...">
                     <span class="search-icon">🔍</span>
@@ -58,6 +63,56 @@
                 </div>
             </section>
         </main>
+
+        <!-- Global Player Bar -->
+        <div id="global-player" class="global-player glass">
+            <div class="player-info">
+                <img id="player-cover" src="" alt="" class="player-cover">
+                <div class="player-meta">
+                    <div id="player-title" class="player-title">Not Playing</div>
+                    <div id="player-artist" class="player-artist">Select a track</div>
+                </div>
+            </div>
+            <div class="player-controls">
+                <button onclick="playPrev()" class="player-btn">⏮️</button>
+                <button id="player-play-pause" onclick="togglePlayPause()" class="player-btn main-play">▶️</button>
+                <button onclick="playNext()" class="player-btn">⏭️</button>
+            </div>
+            <div class="player-progress-container">
+                <span id="player-current-time">0:00</span>
+                <input type="range" id="player-progress" value="0" step="0.1" oninput="seekAudio(this.value)">
+                <span id="player-total-time">0:00</span>
+            </div>
+            <div class="player-actions">
+                <div class="volume-control">
+                    <button onclick="toggleMute()" id="player-volume-btn" class="player-btn">🔊</button>
+                    <input type="range" id="player-volume" value="1" min="0" max="1" step="0.05"
+                        oninput="setVolume(this.value)">
+                </div>
+                <button onclick="openPlaylistManager()" class="player-btn" title="Playlist">🗂️</button>
+            </div>
+            <audio id="global-audio-element"></audio>
+        </div>
+
+        <!-- Playlist Manager Modal -->
+        <div id="playlist-modal" class="modal hidden" style="z-index: 400;">
+            <div class="modal-content glass playlist-manager">
+                <header class="modal-header">
+                    <h2>Playlist Manager 🎵</h2>
+                    <div class="header-tools">
+                        <button onclick="shufflePlaylist()" class="secondary-btn">🔀 Shuffle</button>
+                        <button onclick="clearPlaylist()" class="danger-btn" style="padding: 0.5rem 1rem;">🗑️
+                            Clear</button>
+                    </div>
+                </header>
+                <div id="playlist-items" class="playlist-items">
+                    <!-- Playlist items will be injected here -->
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="primary-btn" onclick="closePlaylistManager()">Close</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Modal for adding new item -->
         <div id="modal" class="modal hidden">

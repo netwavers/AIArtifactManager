@@ -18,6 +18,7 @@ async function init() {
     // Sort by file creation date (descending)
     artifacts.sort((a, b) => (b.file_ctime || 0) - (a.file_ctime || 0));
     render();
+    loadPlayerState();
 }
 
 window.onload = init;
@@ -201,6 +202,364 @@ navItems.forEach(item => {
 // Search
 searchInput.addEventListener('input', () => render());
 
+// --- Playlist & Global Player Logic ---
+let playlist = [];
+let currentTrackIndex = -1;
+const globalAudio = document.getElementById('global-audio-element');
+const playerBar = document.getElementById('global-player');
+const playerPlayBtn = document.getElementById('player-play-pause');
+const progressBar = document.getElementById('player-progress');
+
+// --- Functions ---
+
+function savePlayerState() {
+    const state = {
+        playlist: playlist,
+        currentTrackIndex: currentTrackIndex,
+        volume: globalAudio.volume,
+        muted: globalAudio.muted
+    };
+    localStorage.setItem('artifact_manager_player_state', JSON.stringify(state));
+}
+
+function loadPlayerState() {
+    const saved = localStorage.getItem('artifact_manager_player_state');
+    if (saved) {
+        try {
+            const state = JSON.parse(saved);
+            playlist = state.playlist || [];
+            currentTrackIndex = state.currentTrackIndex !== undefined ? state.currentTrackIndex : -1;
+
+            if (state.volume !== undefined) {
+                globalAudio.volume = state.volume;
+                document.getElementById('player-volume').value = state.volume;
+            }
+
+            if (state.muted !== undefined) {
+                globalAudio.muted = state.muted;
+                const volumeBtn = document.getElementById('player-volume-btn');
+                if (volumeBtn) {
+                    volumeBtn.textContent = state.muted ? '🔇' : (globalAudio.volume > 0.5 ? '🔊' : '🔉');
+                }
+                const volSlider = document.getElementById('player-volume');
+                if (volSlider && state.muted) volSlider.value = 0;
+            }
+
+            if (playlist.length > 0 && currentTrackIndex >= 0) {
+                const track = playlist[currentTrackIndex];
+                if (track) {
+                    document.getElementById('player-title').textContent = track.title;
+                    document.getElementById('player-artist').textContent = track.tags.join(', ') || 'No tags';
+
+                    let thumbUrl = track.thumbnail || '';
+                    if (thumbUrl) {
+                        if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/')) {
+                            thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
+                        }
+                    } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
+                        thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+                    }
+                    document.getElementById('player-cover').src = thumbUrl || 'https://via.placeholder.com/48?text=🎵';
+
+                    let src = track.content;
+                    if (src.match(/^[a-zA-Z]:[\\/]/) || src.startsWith('/') || src.startsWith('\\')) {
+                        src = '/local/' + src.replace(/\\/g, '/');
+                    }
+                    globalAudio.src = encodeURI(src);
+                }
+            }
+            renderPlaylistItems();
+        } catch (e) {
+            console.error("Error loading player state:", e);
+        }
+    }
+}
+
+function playAllAudio() {
+    // Get all currently filtered artifacts that are of type 'audio'
+    const audioArtifacts = artifacts.filter(item => item.type === 'audio');
+    if (audioArtifacts.length === 0) {
+        alert('再生できるオーディオがありません。😅');
+        return;
+    }
+    playlist = [...audioArtifacts];
+    currentTrackIndex = 0;
+    playTrack(currentTrackIndex);
+    playerBar.classList.remove('hidden');
+    savePlayerState();
+}
+
+function playTrack(index) {
+    if (index < 0 || index >= playlist.length) return;
+    currentTrackIndex = index;
+    const track = playlist[index];
+
+    let src = track.content;
+    if (src.match(/^[a-zA-Z]:[\\/]/) || src.startsWith('/') || src.startsWith('\\')) {
+        src = '/local/' + src.replace(/\\/g, '/');
+    }
+
+    globalAudio.src = encodeURI(src);
+    globalAudio.play();
+
+    // Update UI
+    document.getElementById('player-title').textContent = track.title;
+    document.getElementById('player-artist').textContent = track.tags.join(', ') || 'No tags';
+
+    let thumbUrl = track.thumbnail || '';
+    if (thumbUrl) {
+        if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/')) {
+            thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
+        }
+    } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
+        // Use the dedicated cover extraction route for local audio
+        thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+    }
+    document.getElementById('player-cover').src = thumbUrl || 'https://via.placeholder.com/48?text=🎵';
+
+    playerPlayBtn.textContent = '⏸️';
+    renderPlaylistItems();
+    savePlayerState();
+}
+
+function togglePlayPause() {
+    if (globalAudio.paused) {
+        globalAudio.play();
+        playerPlayBtn.textContent = '⏸️';
+    } else {
+        globalAudio.pause();
+        playerPlayBtn.textContent = '▶️';
+    }
+}
+
+function playNext() {
+    if (playlist.length === 0) return;
+    currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
+    playTrack(currentTrackIndex);
+}
+
+function playPrev() {
+    if (playlist.length === 0) return;
+    currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length;
+    playTrack(currentTrackIndex);
+}
+
+function seekAudio(value) {
+    if (globalAudio.duration) {
+        globalAudio.currentTime = (value / 100) * globalAudio.duration;
+    }
+}
+
+function toggleMute() {
+    globalAudio.muted = !globalAudio.muted;
+    const volumeBtn = document.getElementById('player-volume-btn');
+    const volumeSlider = document.getElementById('player-volume');
+
+    if (globalAudio.muted) {
+        volumeBtn.textContent = '🔇';
+        volumeSlider.value = 0;
+    } else {
+        volumeBtn.textContent = globalAudio.volume > 0.5 ? '🔊' : '🔉';
+        volumeSlider.value = globalAudio.volume;
+    }
+    savePlayerState();
+}
+
+function setVolume(value) {
+    globalAudio.volume = value;
+    globalAudio.muted = false;
+    const volumeBtn = document.getElementById('player-volume-btn');
+    volumeBtn.textContent = value > 0.5 ? '🔊' : (value > 0 ? '🔉' : '🔇');
+    savePlayerState();
+}
+
+globalAudio.addEventListener('timeupdate', () => {
+    if (globalAudio.duration) {
+        const progress = (globalAudio.currentTime / globalAudio.duration) * 100;
+        progressBar.value = progress;
+
+        document.getElementById('player-current-time').textContent = formatTime(globalAudio.currentTime);
+        document.getElementById('player-total-time').textContent = formatTime(globalAudio.duration);
+    }
+});
+
+globalAudio.addEventListener('ended', () => {
+    playNext();
+});
+
+function formatTime(seconds) {
+    const min = Math.floor(seconds / 60);
+    const sec = Math.floor(seconds % 60);
+    return `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
+// --- Playlist Manager Logic ---
+function openPlaylistManager() {
+    renderPlaylistItems();
+    document.getElementById('playlist-modal').classList.remove('hidden');
+}
+
+function closePlaylistManager() {
+    document.getElementById('playlist-modal').classList.add('hidden');
+}
+
+function renderPlaylistItems() {
+    const list = document.getElementById('playlist-items');
+    list.innerHTML = '';
+
+    playlist.forEach((track, index) => {
+        const item = document.createElement('div');
+        item.className = `playlist-item ${index === currentTrackIndex ? 'active' : ''}`;
+
+        let thumbUrl = track.thumbnail || '';
+        if (thumbUrl) {
+            if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/')) {
+                thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
+            }
+        } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
+            thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+        }
+
+        item.innerHTML = `
+            <span class="reorder-handle" draggable="true">≡</span>
+            <span class="item-index">${index + 1}</span>
+            <img src="${thumbUrl || 'https://via.placeholder.com/38?text=🎵'}" class="item-thumb" onerror="this.src='https://via.placeholder.com/38?text=🎵'">
+            <span class="item-title">${track.title}</span>
+            <div class="item-actions">
+                <button class="play-btn-list" onclick="playTrack(${index})">▶️</button>
+                <button class="remove-btn" onclick="removeFromPlaylist(${index})">✕</button>
+            </div>
+        `;
+
+        // Reordering logic
+        const handle = item.querySelector('.reorder-handle');
+        handle.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', index);
+            item.classList.add('dragging');
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            const toIndex = index;
+            if (fromIndex !== toIndex) {
+                movePlaylistItem(fromIndex, toIndex);
+            }
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+        });
+
+        list.appendChild(item);
+    });
+}
+
+function movePlaylistItem(from, to) {
+    const item = playlist.splice(from, 1)[0];
+    playlist.splice(to, 0, item);
+
+    // Update currentTrackIndex if necessary
+    if (currentTrackIndex === from) {
+        currentTrackIndex = to;
+    } else if (currentTrackIndex > from && currentTrackIndex <= to) {
+        currentTrackIndex--;
+    } else if (currentTrackIndex < from && currentTrackIndex >= to) {
+        currentTrackIndex++;
+    }
+
+    renderPlaylistItems();
+    savePlayerState();
+}
+
+function shufflePlaylist() {
+    if (playlist.length < 2) return;
+    const currentTrack = playlist[currentTrackIndex];
+
+    // Fisher-Yates shuffle
+    for (let i = playlist.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [playlist[i], playlist[j]] = [playlist[j], playlist[i]];
+    }
+
+    // Find new index of previously playing track
+    if (currentTrack) {
+        currentTrackIndex = playlist.findIndex(p => p.id === currentTrack.id);
+    }
+    renderPlaylistItems();
+    savePlayerState();
+}
+
+function clearPlaylist() {
+    if (confirm('プレイリストをクリアしますか？')) {
+        playlist = [];
+        currentTrackIndex = -1;
+        globalAudio.pause();
+        globalAudio.src = '';
+        playerBar.classList.add('hidden');
+        closePlaylistManager();
+        savePlayerState();
+    }
+}
+
+function removeFromPlaylist(index) {
+    playlist.splice(index, 1);
+    if (index === currentTrackIndex) {
+        if (playlist.length > 0) {
+            playTrack(index % playlist.length);
+        } else {
+            clearPlaylist();
+        }
+    } else if (index < currentTrackIndex) {
+        currentTrackIndex--;
+    }
+    renderPlaylistItems();
+    savePlayerState();
+}
+
+
+function playNow(id) {
+    const item = artifacts.find(a => a.id === id);
+    if (!item) return;
+
+    // Add to playlist if not already there, or just jump to it
+    const index = playlist.findIndex(p => p.id === id);
+    if (index === -1) {
+        playlist.push(item);
+        playTrack(playlist.length - 1);
+    } else {
+        playTrack(index);
+    }
+    playerBar.classList.remove('hidden');
+    savePlayerState();
+}
+
+function enqueueTrack(id) {
+    const item = artifacts.find(a => a.id === id);
+    if (!item) return;
+
+    const index = playlist.findIndex(p => p.id === id);
+    if (index === -1) {
+        playlist.push(item);
+        alert(`「${item.title}」をプレイリストに追加しました！➕`);
+    } else {
+        alert('この曲はすでにプレイリストに含まれています。✨');
+    }
+    playerBar.classList.remove('hidden');
+    renderPlaylistItems();
+    savePlayerState();
+}
+
 // --- Functions ---
 
 function render() {
@@ -224,6 +583,14 @@ function render() {
             item.tags.some(t => t.toLowerCase().includes(searchTerm));
         return matchesFilter && matchesSearch;
     });
+
+    // Show/Hide filter specific controls
+    const filterControls = document.getElementById('filter-controls');
+    if (currentFilter === 'audio') {
+        filterControls.classList.remove('hidden');
+    } else {
+        filterControls.classList.add('hidden');
+    }
 
     gallery.innerHTML = filtered.length ? '' : '<div class="no-results">No artifacts found. Start by creating one! ✨</div>';
 
@@ -274,14 +641,15 @@ function createCard(item) {
                        </div>`;
     } else if (item.type === 'audio') {
         const bgIcon = item.thumbnail ? '' : `<span class="icon" style="font-size:2rem; margin-bottom:10px; z-index: 2; position: relative;" id="audio-icon-${item.id}">🎵</span>`;
-        // Ensure the preview area is a column to stack image/icon and audio controls
+        // Audio card visual
         previewHTML = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; position: relative;">
                          ${customThumbnailHTML}
                          ${bgIcon}
                          <img id="audio-cover-${item.id}" style="display:none; width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; z-index: 2; position: relative;">
-                         <audio controls style="width: 90%; height: 32px; z-index: 2; position: relative; margin-top: auto; margin-bottom: 60px;">
-                            <source src="${encodeURI(displayContent)}" type="audio/mpeg">
-                         </audio>
+                         <div class="audio-play-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; gap: 15px; background:rgba(0,0,0,0.2); z-index: 5; opacity: 0; transition: opacity 0.3s;">
+                            <button class="player-btn main-play" onclick="playNow(${item.id})" style="color: white; filter: drop-shadow(0 2px 10px rgba(0,0,0,0.5));" title="Play Now">▶️</button>
+                            <button class="player-btn" onclick="enqueueTrack(${item.id})" style="color: white; font-size: 1.5rem; filter: drop-shadow(0 2px 10px rgba(0,0,0,0.5));" title="Add to Playlist">➕</button>
+                         </div>
                        </div>`;
     } else if (item.type === 'url') {
         const bgIcon = item.thumbnail ? '' : `<span class="icon" style="font-size:3rem; margin-bottom:10px; z-index: 2; position: relative;">🔗</span>`;
@@ -310,21 +678,7 @@ function createCard(item) {
     }
 
     if (item.type === 'audio') {
-        // Move audio controls to a separate layer that stays above the overlay
-        audioControlsHTML = `
-            <div class="audio-controls-layer" style="position: absolute; bottom: 65px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 20; pointer-events: none;">
-                <audio controls style="width: 90%; height: 32px; pointer-events: auto;">
-                    <source src="${encodeURI(displayContent)}" type="audio/mpeg">
-                </audio>
-            </div>
-        `;
-        // Keep only the visual part in preview
-        const bgIcon = item.thumbnail ? '' : `<span class="icon" style="font-size:2rem; margin-bottom:10px; z-index: 2; position: relative;" id="audio-icon-${item.id}">🎵</span>`;
-        previewHTML = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; position: relative;">
-                         ${customThumbnailHTML}
-                         ${bgIcon}
-                         <img id="audio-cover-${item.id}" style="display:none; width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; z-index: 2; position: relative;">
-                       </div>`;
+        // The play button is already in previewHTML from the previous block
     }
 
     card.innerHTML = `
@@ -427,6 +781,8 @@ function createCard(item) {
             }
         });
     }
+
+
 
     return card;
 }
