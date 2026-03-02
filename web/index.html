@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Job Manager | ジョブ管理</title>
+    <meta name="description" content="生成AIのプロンプトとジョブをポップに管理するツール">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=1.12">
+    <script type="text/javascript" src="/eel.js"></script>
+</head>
+
+<body class="light-theme">
+    <div id="app">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="icon">✨</span>
+                <span class="text">AI Job Manager</span>
+            </div>
+            <nav>
+                <button class="nav-item active" id="nav-all">All Jobs</button>
+                <button class="nav-item" id="nav-images">Images</button>
+                <button class="nav-item" id="nav-audio">Audio</button>
+                <button class="nav-item" id="nav-document">Documents</button>
+                <button class="nav-item" id="nav-movies">Movies</button>
+                <button class="nav-item" id="nav-urls">URLs</button>
+                <button class="nav-item" id="nav-apps">Apps (Vibe Coding)</button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="sidebar-actions" style="display: flex; flex-direction: column; gap: 10px;">
+                    <button id="add-new-btn" class="primary-btn"
+                        onclick="document.getElementById('modal').classList.remove('hidden')">New Job ✨</button>
+                    <button id="clear-all-btn" class="danger-btn" onclick="clearAllJobs()">Clear All 🗑️</button>
+                </div>
+                <!-- Debug Marker -->
+                <div id="debug-ready"
+                    style="position:fixed; bottom:10px; right:10px; width:10px; height:10px; background:green; border-radius:50%; opacity:0.5; pointer-events:none;">
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="content-header">
+                <div class="search-bar">
+                    <input type="text" id="search-input" placeholder="Search prompts or tags...">
+                    <span class="search-icon">🔍</span>
+                </div>
+            </header>
+
+            <section class="gallery-container">
+                <div id="gallery" class="gallery">
+                    <!-- Cards will be injected here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Modal for adding new item -->
+        <div id="modal" class="modal hidden">
+            <div class="modal-content glass" id="drop-zone" ondragover="handleDragOver(event)"
+                ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                <h2>Add New Job</h2>
+                <div id="drop-overlay" class="hidden">
+                    <span>Drop files or text here! 📥</span>
+                </div>
+                <form id="artifact-form">
+                    <div class="form-group">
+                        <label for="title">Title <span style="color:red">*</span></label>
+                        <input type="text" id="title" placeholder="My Awesome Image">
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt">Prompt</label>
+                        <textarea id="prompt" placeholder="Enter the prompt here..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="type">Type</label>
+                        <select id="type">
+                            <option value="image">Image</option>
+                            <option value="audio">Audio</option>
+                            <option value="document">Document</option>
+                            <option value="movie">Movie 🎬</option>
+                            <option value="url">URL</option>
+                            <option value="app">App (Executable/Script)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="content">Content (URL or File) <span style="color:red">*</span></label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="content" placeholder="Image URL or Select a File..."
+                                style="flex: 1;">
+                            <button type="button" class="secondary-btn" onclick="browseFile()"
+                                style="padding: 0 15px;">Browse...</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="thumbnail">Thumbnail Image (Optional)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="thumbnail" placeholder="Local path or URL (for App/URL/Doc)"
+                                style="flex: 1;">
+                            <button type="button" class="secondary-btn" onclick="browseThumbnail()"
+                                style="padding: 0 15px;">Browse Image...</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="tags">Tags (comma separated)</label>
+                        <input type="text" id="tags" placeholder="cyberpunk, futuristic">
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="secondary-btn" onclick="closeModal()">Cancel</button>
+                        <button type="button" class="primary-btn" onclick="saveArtifact()">Save 🚀</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- In-App File Explorer Modal -->
+        <div id="explorer-modal" class="modal hidden" style="z-index: 200;">
+            <div class="modal-content glass explorer-container">
+                <header class="explorer-header">
+                    <h2>Select File</h2>
+                    <div class="explorer-nav">
+                        <button class="secondary-btn" id="explorer-back-btn" onclick="navigateParent()">⬆️ Back</button>
+                        <select id="explorer-sort-select" class="secondary-btn"
+                            style="padding: 5px 10px; border-radius: 6px; font-size: 0.85rem; max-width: 140px;"
+                            onchange="updateExplorerSort()">
+                            <option value="date_desc" selected>📅 新しい順</option>
+                            <option value="date_asc">📅 古い順</option>
+                            <option value="name_asc">🔤 名前 A-Z</option>
+                            <option value="name_desc">🔤 名前 Z-A</option>
+                        </select>
+                        <div id="current-path-display" class="path-breadcrumb">C:\Users\...</div>
+                    </div>
+                </header>
+                <div class="explorer-body">
+                    <aside class="explorer-sidebar">
+                        <div class="nav-section">
+                            <h4>Quick Access</h4>
+                            <button class="nav-item" onclick="navigateHome()">🏠 Home</button>
+                        </div>
+                        <div class="nav-section">
+                            <h4>Drives</h4>
+                            <div id="explorer-drives" class="drive-list">
+                                <!-- Drives injected here -->
+                            </div>
+                        </div>
+                    </aside>
+                    <div class="explorer-main">
+                        <div id="explorer-list" class="explorer-grid">
+                            <!-- Files/Folders injected here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="secondary-btn" onclick="closeExplorer()">Cancel</button>
+                    <button type="button" class="primary-btn" id="explorer-select-btn" disabled>Select 📁</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Media Viewer Modal (Images & Movies) -->
+        <div id="image-viewer-modal" class="modal hidden" style="z-index: 300;" onclick="closeImageViewer()">
+            <div class="viewer-container" onclick="event.stopPropagation()">
+                <img id="viewer-img" src="" alt="Full view" class="hidden">
+                <video id="viewer-video" controls class="hidden"
+                    style="max-width: 90vw; max-height: 85vh; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);"></video>
+                <button class="viewer-close" onclick="closeImageViewer()">×</button>
+            </div>
+        </div>
+    </div>
+    <script src="main.js?v=1.12"></script>
+</body>
+
+</html>

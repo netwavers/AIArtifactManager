@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Data
+data.json
+debug_output*.txt
+
+# Build
+build/
+dist/
+*.spec
+
+# System/IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Antigravity/Agent artifacts
+.gemini/
+.agent/
+_agent/
+brain/

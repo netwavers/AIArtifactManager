@@ -1,0 +1,4 @@
+eel
+mutagen
+bottle
+pyinstaller
