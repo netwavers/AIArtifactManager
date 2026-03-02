@@ -497,7 +497,7 @@ nav {
     z-index: 15;
 }
 
-.card:hover .card-overlay {
+.card-overlay:hover {
     transform: translateY(0);
     /* Slide up to reveal all info on hover */
 }
