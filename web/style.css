@@ -794,6 +794,16 @@ nav {
     filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
 }
 
+.movie-static-thumb {
+    pointer-events: none;
+    z-index: 1;
+    transition: opacity 0.3s;
+}
+
+.card-preview:hover .movie-static-thumb {
+    opacity: 0 !important;
+}
+
 @keyframes movieIconBounce {
 
     0%,

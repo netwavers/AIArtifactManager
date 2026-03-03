@@ -24,3 +24,4 @@ dist/
 .agent/
 _agent/
 brain/
+.thumbnails/

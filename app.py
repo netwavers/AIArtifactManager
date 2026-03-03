@@ -12,6 +12,9 @@ from mutagen import File as MutagenFile
 import subprocess
 import webbrowser
 import threading
+import hashlib
+import io
+from PIL import Image
 
 # Set web files folder
 eel.init('web')
@@ -92,17 +95,12 @@ def serve_local_file(filepath):
     filename = os.path.basename(filepath)
     return bottle.static_file(filename, root=folder)
 
-# Dedicated route for audio cover extraction
-@eel.btl.route('/cover/<filepath:path>')
-def serve_audio_cover(filepath):
-    filepath = unquote(filepath)
-    if filepath.startswith('/') and len(filepath) > 2 and filepath[2] == ':':
-        filepath = filepath[1:]
-        
+# Helper to extract audio cover art
+def get_audio_cover_data(filepath):
     try:
         audio = MutagenFile(filepath)
         if audio is None:
-            return bottle.HTTPError(404)
+            return None, None
             
         data = None
         mime = "image/jpeg"
@@ -127,13 +125,96 @@ def serve_audio_cover(filepath):
             data = covr
             mime = 'image/jpeg' if covr.startswith(b'\xff\xd8') else 'image/png'
             
-        if data:
-            return bottle.HTTPResponse(body=data, headers={'Content-Type': mime})
+        return data, mime
+    except Exception as e:
+        print(f"Error extracting cover for {filepath}: {e}")
+        return None, None
+
+# Dedicated route for audio cover extraction (Original data)
+@eel.btl.route('/cover/<filepath:path>')
+def serve_audio_cover(filepath):
+    filepath = unquote(filepath)
+    if filepath.startswith('/') and len(filepath) > 2 and filepath[2] == ':':
+        filepath = filepath[1:]
+        
+    data, mime = get_audio_cover_data(filepath)
+    if data:
+        return bottle.HTTPResponse(body=data, headers={'Content-Type': mime})
+            
+    return bottle.HTTPError(404)
+
+# High-quality thumbnail route with caching
+@eel.btl.route('/thumb/<filepath:path>')
+def serve_thumbnail(filepath):
+    filepath = unquote(filepath)
+    if filepath.startswith('/') and len(filepath) > 2 and filepath[2] == ':':
+        filepath = filepath[1:]
+    
+    if not os.path.exists(filepath):
+        return bottle.HTTPError(404)
+
+    # Use a hash of the path to create a unique cache filename
+    path_hash = hashlib.md5(filepath.encode()).hexdigest()
+    cache_dir = os.path.join(os.getcwd(), '.thumbnails')
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir, exist_ok=True)
+        
+    cache_path = os.path.join(cache_dir, f"{path_hash}.jpg")
+    
+    # Check if cache exists and is newer than source
+    if os.path.exists(cache_path) and os.path.getmtime(cache_path) > os.path.getmtime(filepath):
+        return bottle.static_file(f"{path_hash}.jpg", root=cache_dir)
+
+    try:
+        ext = os.path.splitext(filepath)[1].lower()
+        thumb_size = (400, 400) # Balanced size for quality and speed
+        
+        # Movie handling (extract frame)
+        if ext in ['.mp4', '.mkv', '.avi', '.mov', '.webm']:
+            try:
+                # Extract first frame using ffmpeg
+                cmd = [
+                    'ffmpeg', '-y', '-i', filepath, 
+                    '-ss', '00:00:01.000', '-vframes', '1', 
+                    '-vf', f'scale={thumb_size[0]}:{thumb_size[1]}:force_original_aspect_ratio=decrease',
+                    '-q:v', '2', cache_path
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+                return bottle.static_file(f"{path_hash}.jpg", root=cache_dir)
+            except Exception as e:
+                print(f"FFmpeg thumbnail error: {e}")
+                return bottle.HTTPError(500, "Thumbnail extraction failed")
+
+        # Image handling (high-quality resize)
+        elif ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']:
+            with Image.open(filepath) as img:
+                # Convert to RGB if necessary (for JPEG save)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                
+                # High-quality resize (LANCZOS)
+                img.thumbnail(thumb_size, Image.Resampling.LANCZOS)
+                img.save(cache_path, 'JPEG', quality=90, optimize=True)
+                
+            return bottle.static_file(f"{path_hash}.jpg", root=cache_dir)
+        
+        # Audio handling (high-quality resize cover art)
+        elif ext in ['.mp3', '.flac', '.m4a', '.wav']:
+            data, mime = get_audio_cover_data(filepath)
+            if data:
+                with Image.open(io.BytesIO(data)) as img:
+                    if img.mode in ('RGBA', 'P'):
+                        img = img.convert('RGB')
+                    img.thumbnail(thumb_size, Image.Resampling.LANCZOS)
+                    img.save(cache_path, 'JPEG', quality=90, optimize=True)
+                return bottle.static_file(f"{path_hash}.jpg", root=cache_dir)
+            return bottle.HTTPError(404)
             
     except Exception as e:
-        print(f"Error serving cover for {filepath}: {e}")
+        print(f"Thumbnail generation error for {filepath}: {e}")
         
-    return bottle.HTTPError(404)
+    # Fallback to serving original or error
+    return bottle.static_file(os.path.basename(filepath), root=os.path.dirname(filepath))
 
 @eel.expose
 def run_app(content):

@@ -257,7 +257,7 @@ function loadPlayerState() {
                             thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
                         }
                     } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
-                        thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+                        thumbUrl = `/thumb/${encodeURIComponent(track.content)}`;
                     }
                     document.getElementById('player-cover').src = thumbUrl || 'https://via.placeholder.com/48?text=🎵';
 
@@ -309,11 +309,11 @@ function playTrack(index) {
     let thumbUrl = track.thumbnail || '';
     if (thumbUrl) {
         if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/')) {
-            thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
+            thumbUrl = '/thumb/' + thumbUrl.replace(/\\/g, '/');
         }
     } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
-        // Use the dedicated cover extraction route for local audio
-        thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+        // Use the dedicated thumbnail route for local audio
+        thumbUrl = `/thumb/${encodeURIComponent(track.content)}`;
     }
     document.getElementById('player-cover').src = thumbUrl || 'https://via.placeholder.com/48?text=🎵';
 
@@ -417,7 +417,7 @@ function renderPlaylistItems() {
                 thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
             }
         } else if (track.type === 'audio' && (track.content.match(/^[a-zA-Z]:[\\/]/) || track.content.startsWith('/'))) {
-            thumbUrl = `/cover/${encodeURIComponent(track.content)}`;
+            thumbUrl = `/thumb/${encodeURIComponent(track.content)}`;
         }
 
         item.innerHTML = `
@@ -608,30 +608,38 @@ function createCard(item) {
     const typeClass = `${item.type}-type`;
 
     // Convert absolute windows/linux paths to eel local route for display
-    let displayContent = item.content;
+    // URL for actual playback/full-size viewing
+    let localFileUrl = item.content;
     if (item.type === 'image' || item.type === 'audio' || item.type === 'movie') {
-        if (displayContent.match(/^[a-zA-Z]:[\\/]/) || displayContent.startsWith('/') || displayContent.startsWith('\\')) {
-            displayContent = '/local/' + displayContent.replace(/\\/g, '/');
+        if (localFileUrl.match(/^[a-zA-Z]:[\\/]/) || localFileUrl.startsWith('/') || localFileUrl.startsWith('\\')) {
+            localFileUrl = '/local/' + localFileUrl.replace(/\\/g, '/');
         }
+    }
+
+    // URL for high-quality thumbnail preview
+    let thumbUrl = item.content;
+    if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/') || thumbUrl.startsWith('\\')) {
+        thumbUrl = '/thumb/' + thumbUrl.replace(/\\/g, '/');
     }
 
     let customThumbnailHTML = '';
     if (item.thumbnail) {
-        let thumbUrl = item.thumbnail;
-        if (thumbUrl.match(/^[a-zA-Z]:[\\/]/) || thumbUrl.startsWith('/')) {
-            thumbUrl = '/local/' + thumbUrl.replace(/\\/g, '/');
+        let customThumb = item.thumbnail;
+        if (customThumb.match(/^[a-zA-Z]:[\\/]/) || customThumb.startsWith('/')) {
+            customThumb = '/thumb/' + customThumb.replace(/\\/g, '/');
         }
-        customThumbnailHTML = `<img src="${thumbUrl}" alt="${item.title}" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1;" onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+Not+Found'">`;
+        customThumbnailHTML = `<img src="${customThumb}" alt="${item.title}" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1;" onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+Not+Found'">`;
     }
 
     if (item.type === 'image') {
-        previewHTML = `<img src="${displayContent}" alt="${item.title}" onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+Not+Found'">`;
+        previewHTML = `<img src="${thumbUrl}" alt="${item.title}" onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+Not+Found'">`;
     } else if (item.type === 'movie') {
         const bgIcon = item.thumbnail ? '' : `<span class="icon movie-icon-bounce" style="font-size:3.5rem; margin-bottom:10px; z-index: 2; position: relative; filter: drop-shadow(0 0 15px rgba(255,255,255,0.3));">🎬</span>`;
-        // Use video for preview if no thumbnail is provided
-        const videoPreviewHTML = item.thumbnail ? '' : `<video class="video-preview-element" preload="metadata" muted playsinline loop style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; z-index:0;" src="${encodeURI(displayContent)}#t=1.0"></video>`;
+        // Use video for preview if no thumbnail is provided - but source must be the video file!
+        const videoPreviewHTML = item.thumbnail ? '' : `<video class="video-preview-element" preload="metadata" muted playsinline loop style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; z-index:0;" src="${encodeURI(localFileUrl)}#t=1.0"></video>`;
         previewHTML = `<div class="movie-card-bg" style="width:100%; height:100%; position:absolute; top:0; left:0; background: linear-gradient(135deg, #1a1a1a 0%, #333 100%); z-index:0;"></div>
                        ${videoPreviewHTML}
+                       <img src="${thumbUrl}" style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; z-index:1;" class="movie-static-thumb">
                        ${customThumbnailHTML}
                        ${bgIcon}
                        <div class="video-preview-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); z-index: 5;">
@@ -711,7 +719,7 @@ function createCard(item) {
         const coverImg = card.querySelector(`#audio-cover-${item.id}`);
         const icon = card.querySelector(`#audio-icon-${item.id}`);
         if (coverImg && icon) {
-            coverImg.src = `/cover/${encodeURIComponent(item.content)}`;
+            coverImg.src = `/thumb/${encodeURIComponent(item.content)}`;
             coverImg.onload = () => {
                 coverImg.style.display = 'block';
                 icon.style.display = 'none';
@@ -774,9 +782,11 @@ function createCard(item) {
             if (item.type === 'document') {
                 runApp(item.id);
             } else {
-                const src = item.thumbnail ?
-                    (item.thumbnail.match(/^[a-zA-Z]:[\\/]/) || item.thumbnail.startsWith('/') ? '/local/' + item.thumbnail.replace(/\\/g, '/') : item.thumbnail) :
-                    displayContent;
+                // Viewer shows high quality thumb for custom thumbnails, but actual content for others
+                let src = localFileUrl;
+                if (item.thumbnail) {
+                    src = item.thumbnail.match(/^[a-zA-Z]:[\\/]/) || item.thumbnail.startsWith('/') ? '/thumb/' + item.thumbnail.replace(/\\/g, '/') : item.thumbnail;
+                }
                 openImageViewer(src, item.type);
             }
         });

@@ -2,3 +2,4 @@ eel
 mutagen
 bottle
 pyinstaller
+Pillow
